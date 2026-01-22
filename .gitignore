@@ -8,3 +8,7 @@ __pycache__/
 
 # VS Code
 .vscode/
+
+# Credenciales de Google
+service_account.json
+credentials.json

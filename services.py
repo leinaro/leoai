@@ -3,6 +3,10 @@
 import os
 import logging
 import requests
+import json
+import gspread
+from datetime import datetime
+from google.oauth2.service_account import Credentials
 #import google.genai as genai
 from google import genai
 from google.genai import types
@@ -40,6 +44,29 @@ def initialize_gemini():
 
 # Initialize the model when the service module is loaded
 client = initialize_gemini()
+
+# --- Google Sheets Service ---
+def add_row_to_sheet(data_row: list):
+    """Appends a new row to the configured Google Sheet."""
+    sheet_id = os.getenv("GOOGLE_SHEET_ID")
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    
+    if not sheet_id or not creds_path:
+        logging.error("Google Sheet ID or Credentials Path not found in environment variables.")
+        return
+
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        gs_client = gspread.authorize(creds)
+        
+        sheet = gs_client.open_by_key(sheet_id).sheet1
+        sheet.append_row(data_row)
+        logging.info(f"Successfully added row to Google Sheet: {data_row}")
+    except FileNotFoundError:
+        logging.error(f"Credentials file not found at path: {creds_path}. Make sure the file exists.")
+    except Exception as e:
+        logging.error(f"An error occurred while writing to Google Sheets: {e}")
 
 # --- WhatsApp Business API Functions ---
 
@@ -84,9 +111,19 @@ def process_with_gemini(text: str) -> Optional[str]:
         #response = model.generate_content(text)
         # Instrucciones del sistema (Accountant Assistant)
         system_instruction = (
-            "Act as a Senior Financial Assistant. Extract data from messages into JSON: "
-            "{'concept': string, 'amount': number, 'category': string, 'currency': string}. "
-            "Only return the JSON object, no conversation."
+            "Act as a Senior Financial Assistant. From each user message, extract financial transaction data and return it as a JSON object with the following fields: "
+            "{'concept': string, 'amount': number, 'category': string, 'currency': string, 'date': string, 'folder': string} "
+            "Folder rules: "
+            "- The 'folder' field MUST be one of the following values: ['Salitre', 'Tramonte', 'Villa', 'Manuela Sancho']. "
+            "- Infer the folder based on contextual clues such as location, property name, people involved, or recurring patterns. "
+            "- If the folder cannot be confidently determined, set 'folder' to 'Unknown'. "
+            "Category rules: "
+            "- Assign the most appropriate category based on the nature of the expense or income. "
+            "- Use only predefined categories list ['Rent', 'Utilities','Internet & Phone','Electricity','Water','Gas','Cleaning','Transportation','Insurance','Taxes','HOA / Community Fees','Subscriptions', 'Miscellaneous'] "
+            "Output rules: "
+            "- Only return the JSON object, no conversation. "
+            "- Do not include explanations, comments, or conversational text. "
+            "- If any field is missing from the message, infer it when possible or use null. "
         )
 
         response = client.models.generate_content(
@@ -111,13 +148,38 @@ def handle_whatsapp_message(data: dict):
         message_data = data['entry'][0]['changes'][0]['value']['messages'][0]
         sender_phone = message_data['from']
         message_text = message_data['text']['body']
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logging.info(f"Received message: '{message_text}' from {sender_phone}")
 
         # Process the message with Gemini
         ai_response = process_with_gemini(message_text)
 
         if ai_response:
-            # Send the AI's response back to the user via WhatsApp
+            # --- GOOGLE SHEETS LOGIC ---
+            try:
+                # The AI returns a JSON string, parse it into a Python dict
+                expense_data = json.loads(ai_response)
+                
+                # Prepare the row for Google Sheets in the correct order
+                row_to_add = [
+                    timestamp,
+                    sender_phone,
+                    expense_data.get('date', ''),
+                    expense_data.get('concept', ''),
+                    expense_data.get('amount', ''),
+                    expense_data.get('category', ''),
+                    expense_data.get('currency', '')
+                ]
+                
+                # Add the data to the sheet
+                add_row_to_sheet(row_to_add)
+                
+            except json.JSONDecodeError:
+                logging.error(f"Could not parse AI response as JSON: {ai_response}")
+            except Exception as e:
+                logging.error(f"An error occurred during Google Sheets data preparation: {e}")
+            # --- END GOOGLE SHEETS LOGIC ---
+
             print(f"ai response {ai_response}")
             #send_whatsapp_message(to=sender_phone, message=ai_response)
         else:
