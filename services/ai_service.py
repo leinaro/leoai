@@ -1,39 +1,36 @@
-"""Handles interactions with the Google Generative AI (Gemini)."""
+"""Handles interactions with the AI service (Gemini)."""
 
 import logging
 import os
-import google.generativeai as genai
-from typing import Dict, Any
 
+import google.genai as genai
 
-def get_gemini_response(text: str) -> Dict[str, Any]:
-    """Parses text into a structured JSON using Gemini.
+# Configure the generative AI model
+try:
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    model = genai.GenerativeModel('gemini-pro')
+except Exception as e:
+    logging.error(f"Failed to configure Gemini: {e}")
+    model = None
+
+def get_gemini_response(text: str) -> str | None:
+    """Generates a response from the Gemini model.
 
     Args:
-        text: The text to parse.
+        text: The input text to the model.
 
     Returns:
-        A dictionary with the parsed data (Concept, Amount, Category),
-        or an empty dictionary if an error occurs.
+        The generated response, or None if an error occurred.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        logging.error("GEMINI_API_KEY not found in environment variables.")
-        return {}
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-pro')
-
-    prompt = f"""Extract the concept, amount, and category from the following text. 
-    Return the result in a JSON format with the keys 'Concept', 'Amount', and 'Category'.
-    Text: {text}
-    """
+    if not model:
+        logging.error("Gemini model is not available.")
+        return None
 
     try:
-        response = model.generate_content(prompt)
-        # Clean up the response to get a valid JSON
-        cleaned_response = response.text.strip().replace('```json', '').replace('```', '')
-        return eval(cleaned_response)  # Use eval carefully, consider json.loads for production
+        response = model.generate_content(text)
+        # Assuming the response format has a 'text' attribute or similar
+        # You might need to adjust this based on the actual response object
+        return response.text
     except Exception as e:
-        logging.error(f"Error getting Gemini response: {e}")
-        return {}
+        logging.error(f"Error generating response from Gemini: {e}")
+        return None
