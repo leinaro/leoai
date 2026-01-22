@@ -134,7 +134,6 @@ def process_with_gemini(text: str) -> Optional[str]:
             ),
             contents=text
         )
-        print(response.text)
         return response.text
     except Exception as e:
         logging.error(f"An error occurred while communicating with Gemini: {e}")
@@ -168,7 +167,8 @@ def handle_whatsapp_message(data: dict):
                     expense_data.get('concept', ''),
                     expense_data.get('amount', ''),
                     expense_data.get('category', ''),
-                    expense_data.get('currency', '')
+                    expense_data.get('currency', ''),
+                    expense_data.get('folder', '')
                 ]
                 
                 # Add the data to the sheet
@@ -181,11 +181,11 @@ def handle_whatsapp_message(data: dict):
             # --- END GOOGLE SHEETS LOGIC ---
 
             print(f"ai response {ai_response}")
-            #send_whatsapp_message(to=sender_phone, message=ai_response)
+            send_whatsapp_message(to=sender_phone, message=ai_response)
         else:
             # Send a fallback message if AI processing fails
             logging.warning("AI response was empty. Sending fallback message.")
-            #send_whatsapp_message(to=sender_phone, message="Sorry, I couldn't process your request.")
+            send_whatsapp_message(to=sender_phone, message="Sorry, I couldn't process your request.")
 
     except (KeyError, IndexError) as e:
         logging.error(f"Could not parse WhatsApp webhook payload: {e}")
