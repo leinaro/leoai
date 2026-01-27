@@ -34,34 +34,35 @@ def send_whatsapp_message(to: str, message: str):
     except requests.exceptions.RequestException as e:
         logging.error(f"Error sending WhatsApp message: {e}")
 
-def get_image_url(image_id: str) -> Optional[str]:
-    """Retrieves the media URL of an image from the WhatsApp API."""
+def get_media_url(media_id: str) -> Optional[str]:
+    """Sirve para cualquier archivo: imagen, PDF, video, etc."""
     access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
     if not access_token:
         logging.error("WHATSAPP_ACCESS_TOKEN not found.")
         return None
-    url = f"https://graph.facebook.com/v20.0/{image_id}"
+    
+    # El endpoint es el mismo para todos los tipos de media
+    url = f"https://graph.facebook.com/v20.0/{media_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
+    
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        media_data = response.json()
-        return media_data.get("url")
+        return response.json().get("url")
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error getting image URL: {e}")
+        logging.error(f"Error obteniendo URL de media ({media_id}): {e}")
         return None
 
-def download_image_content(media_url: str) -> Optional[bytes]:
-    """Downloads the content of an image from its media URL."""
+def download_media_content(media_url: str) -> Optional[bytes]:
+    """Descarga los bytes del archivo, sea cual sea su formato."""
     access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
-    if not access_token:
-        logging.error("WHATSAPP_ACCESS_TOKEN not found.")
-        return None
     headers = {"Authorization": f"Bearer {access_token}"}
+    
     try:
+        # Importante: WhatsApp requiere el token incluso para la descarga del binario
         response = requests.get(media_url, headers=headers)
         response.raise_for_status()
         return response.content
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error downloading image content: {e}")
+        logging.error(f"Error descargando contenido de media: {e}")
         return None

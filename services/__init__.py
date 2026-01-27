@@ -21,42 +21,78 @@ def handle_whatsapp_message(data: dict):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         message_type = message_data.get('type')
 
-        image_bytes = None
+        file_bytes = None
+        mimetype = None
         ai_response = None
 
         if message_type == 'text':
             message_text = message_data['text']['body']
             logging.info(f"Received text message: '{message_text}' from {sender_phone}")
             ai_response = ai_service.process_with_gemini(client, message_text)
-        elif message_type == 'image':
-            image_id = message_data['image']['id']
-            caption = message_data['image'].get('caption', '')
-            logging.info(f"Received image with caption: '{caption}' from {sender_phone}")
-            ai_response, image_bytes = process_image_message(sender_phone, image_id, caption, timestamp)
+
+        elif message_type in ['image', 'document']:
+            # Extraemos la info dinámicamente según sea imagen o documento
+            media_info = message_data[message_type] 
+            media_id = media_info['id']
+            mimetype = media_info['mime_type'] # <--- VITAL: capturamos el tipo real
+            caption = media_info.get('caption', '')
+            logging.info(f"Received {message_type} ({mimetype}) with caption: '{caption}' from {sender_phone}")
+
+            ai_response, file_bytes = process_media_message(sender_phone, media_id, caption, timestamp, message_type)
+        
         else:
             logging.warning(f"Unsupported message type: {message_type}")
 
-        handle_ai_response(timestamp, sender_phone, ai_response, image_bytes)
+        handle_ai_response(timestamp, sender_phone, ai_response, file_bytes, mimetype)
+
 
     except (KeyError, IndexError) as e:
         logging.error(f"Could not parse WhatsApp webhook payload: {e}")
         logging.error(f"Received data: {data}")
 
-def process_image_message(sender_phone: str, image_id: str, caption: str, timestamp: str) -> Tuple[Optional[str], Optional[bytes]]:
-    """Processes an image message by coordinating WhatsApp and AI services."""
-    media_url = whatsapp_service.get_image_url(image_id)
+def process_media_message(
+    sender_phone: str, 
+    media_id: str, 
+    caption: str, 
+    timestamp: str, 
+    message_type: str # 'image' o 'document'
+) -> Tuple[Optional[str], Optional[bytes]]:
+    """
+    Procesa un archivo (imagen o PDF) coordinando la descarga de WhatsApp 
+    y el análisis de Gemini.
+    """
+    # 1. Obtener la URL del archivo (WhatsApp usa la misma lógica para ambos)
+    media_url = whatsapp_service.get_media_url(media_id)
     if not media_url:
         # Consider sending a WhatsApp message back to the user
+        logging.error(f"No se pudo obtener la URL para el {message_type}")
         return None, None
 
-    image_bytes = whatsapp_service.download_image_content(media_url)
-    if not image_bytes:
+    # 2. Descargar los bytes (valido para jpg, png, pdf, etc.)
+    file_bytes = whatsapp_service.download_media_content(media_url)
+    if not file_bytes:
         # Consider sending a WhatsApp message back to the user
+        logging.error(f"No se pudieron descargar los bytes del {message_type}")
         return None, None
+    
+    # 3. Mandar a Gemini
+    # Gemini 1.5 detecta automáticamente si los bytes son imagen o PDF
+    logging.info(f"Enviando {message_type} a Gemini para análisis...")
+    ai_response = ai_service.process_with_gemini(
+        client, 
+        text=caption, 
+        file_bytes=file_bytes
+    )
         
-    return ai_service.process_with_gemini(client, text=caption, image_bytes=image_bytes), image_bytes
+    return ai_response, file_bytes
 
-def handle_ai_response(timestamp: str, sender_phone: str, ai_response: Optional[str], image_bytes: Optional[bytes] = None):
+def handle_ai_response(
+    timestamp: str, 
+    sender_phone: str, 
+    ai_response: Optional[str], 
+    file_bytes: Optional[bytes] = None,
+    mimetype: Optional[str] = None
+):
     """Handles the response from the AI service, saving data and images."""
     if not ai_response:
         logging.warning("AI response was empty. Cannot process further.")
@@ -65,31 +101,40 @@ def handle_ai_response(timestamp: str, sender_phone: str, ai_response: Optional[
 
     try:
         expense_data = json.loads(ai_response)
+    
+        date_for_drive = expense_data.get('date') or timestamp
         folder = expense_data.get('folder', 'Unknown')
+        concept = expense_data.get('concept', '')
+    
         link_drive = ""
+            
+        if file_bytes and mimetype:
+            ext = ".pdf" if "pdf" in mimetype else ".jpg"
+            
+            clean_concept = str(concept).replace(" ", "_")[:20] # Limitamos largo
+            file_name = f"{folder}_{clean_concept}_{str(timestamp).replace(' ', '_').replace(':', '-')}{ext}"
 
-        if image_bytes:
-            # The image_id is not available here, generate a filename
-            file_name = f"upload_{timestamp.replace(' ', '_').replace(':', '-')}.jpg"
-            link_drive = google_service.save_image(image_bytes, folder, file_name)
+            link_drive = google_service.save_file(file_bytes, date_for_drive, file_name, mimetype)
 
         # Prepare the row for Google Sheets
+        # Date	Concept	Amount	Currency	Category	Subcategory	Sender	Timestamp
         row_to_add = [
-            timestamp,
-            sender_phone,
-            expense_data.get('date', ''),
-            expense_data.get('concept', ''),
+            date_for_drive,         # C: Fecha de la factura (extraída por IA)
+            concept,                # D: Concepto
             expense_data.get('amount', ''),
-            expense_data.get('category', ''),
             expense_data.get('currency', ''),
-            folder,
-            link_drive
+            expense_data.get('category', ''),
+            folder,                 # H: Ubicación/Folder
+            sender_phone,           # B: Quién lo envió
+            timestamp,              # A: Cuándo se envió el mensaje
+            link_drive              # I: Link directo al archivo
         ]
         
         google_service.add_row_to_sheet(row_to_add)
         
         # Optionally, send a success message via WhatsApp
         # whatsapp_service.send_whatsapp_message(to=sender_phone, message="Data processed successfully.")
+        logging.info(f"✅ Transacción registrada: {concept} - {folder}")
 
     except json.JSONDecodeError:
         logging.error(f"Could not parse AI response as JSON: {ai_response}")

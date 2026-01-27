@@ -4,6 +4,8 @@ import os
 import logging
 import gspread
 import io
+import datetime
+
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -33,16 +35,37 @@ def add_row_to_sheet(data_row: list):
 
 # --- Google Drive Service ---
 
-def save_image(image_bytes: bytes, folder_name: str, file_name: str):
+def save_file(file_bytes: bytes, date: str, file_name: str, mimetype: str):
     """Saves image bytes to a specified local folder."""
     try:
+        
         folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
-        subfolder_id = get_or_create_subfolder(folder_name, folder_id)
-        link_drive = upload_image_to_drive(image_bytes, file_name, subfolder_id)
+        target_folder_id = get_folder_id_by_date(folder_id, date)
+        #subfolder_id = get_or_create_subfolder(folder_name, folder_id)
+        #link_drive = upload_image_to_drive(image_bytes, file_name, target_folder_id)
+        link_drive = upload_file_to_drive(file_bytes, file_name, target_folder_id, mimetype)
         return link_drive
     except Exception as e:
         logging.error(f"Error saving image: {e}")
         return None
+
+
+def get_folder_id_by_date(root_id, full_date):
+    """
+    Obtiene la ruta Año/Mes (ej: 2025/01).
+    Retorna el ID de la carpeta del mes final.
+    """
+    date = datetime.strptime(full_date, "%Y-%m-%d %H:%M:%S")
+    year = date.strftime("%Y")  # "2025"
+    month = dare.strftime("%m")   # "01"
+
+    # 1. Buscar/Crear carpeta del Año
+    year_id = get_or_create_subfolder(year, root_id)
+    
+    # 2. Buscar/Crear carpeta del Mes dentro del Año
+    month_id = get_or_create_subfolder(month, year_id_id)
+    
+    return month_id
 
 def get_or_create_subfolder(folder_name: str, parent_id: str):
     """Busca una subcarpeta por nombre dentro de una carpeta padre. Si no existe, la crea."""
@@ -58,35 +81,33 @@ def get_or_create_subfolder(folder_name: str, parent_id: str):
                  f"mimeType = 'application/vnd.google-apps.folder' and "
                  f"trashed = false")
         
-        results = service.files().list(q=query, fields="files(id)").execute()
+        results = service.files().list(
+            q=query, 
+            fields="files(id)",
+            supportsAllDrives=True,  # Added for Shared Drive compatibility
+            includeItemsFromAllDrives=True  # Added for Shared Drive compatibility
+        ).execute()
+        
         items = results.get('files', [])
+    
 
         if items:
             logging.info(f"Subcarpeta encontrada: {folder_name} (ID: {items[0]['id']})")
             return items[0]['id']
-
-        folder_metadata = {
-            'name': folder_name,
-            'parents': [parent_id],
-            'mimeType': 'application/vnd.google-apps.folder'
-        }
-        
-        new_folder = service.files().create(body=folder_metadata, fields='id').execute()
-        logging.info(f"Nueva subcarpeta creada: {folder_name} (ID: {new_folder['id']})")
-        return new_folder.get('id')
+       
+        logging.info(f"Subcarpeta no encontrada: {folder_name}, usando padre (ID: {parent_id})")
+        return parent_id
 
     except Exception as e:
         logging.error(f"Error al gestionar la subcarpeta en Drive: {e}")
         return parent_id
 
 def upload_image_to_drive(image_bytes: bytes, filename: str, folder_id: str):
-    """Subes bytes de imagen a una carpeta de Drive y devuelve el link público."""
     creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     try:
         scopes = ["https://www.googleapis.com/auth/drive"]
         creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
-        
         service = build('drive', 'v3', credentials=creds)
 
         file_metadata = {
@@ -94,20 +115,69 @@ def upload_image_to_drive(image_bytes: bytes, filename: str, folder_id: str):
             'parents': [folder_id]
         }
         
-        media = MediaIoBaseUpload(io.BytesIO(image_bytes), mimetype='image/jpeg', resumable=True)
+        media = MediaIoBaseUpload(
+            io.BytesIO(image_bytes), 
+            mimetype='image/jpeg', 
+            resumable=False
+        )
 
         file = service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id, webViewLink'
+            fields='id, webViewLink',
+            # Esto ayuda a que Google entienda que se sube a un recurso compartido
+            supportsAllDrives=True 
         ).execute()
 
+        # Si quieres que Leo pueda leerlo luego, esto está bien
         service.permissions().create(
             fileId=file.get('id'),
             body={'type': 'anyone', 'role': 'viewer'}
         ).execute()
 
-        logging.info(f"Archivo subido a Drive: {file.get('id')}")
+        return file.get('webViewLink')
+
+    except Exception as e:
+        logging.error(f"Error subiendo a Google Drive: {e}")
+        return None
+
+def upload_file_to_drive(file_bytes: bytes, filename: str, folder_id: str, mimetype: str):
+    """
+    Sube cualquier tipo de archivo (imagen, PDF, etc.) a Drive.
+    """
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    
+    try:
+        scopes = ["https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        service = build('drive', 'v3', credentials=creds)
+
+        file_metadata = {
+            'name': filename,
+            'parents': [folder_id]
+        }
+        
+        # Usamos el mimetype que viene de WhatsApp (ej: 'application/pdf' o 'image/png')
+        media = MediaIoBaseUpload(
+            io.BytesIO(file_bytes), 
+            mimetype=mimetype, 
+            resumable=False
+        )
+
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, webViewLink',
+            supportsAllDrives=True 
+        ).execute()
+
+        # Permisos para que sea consultable
+        service.permissions().create(
+            fileId=file.get('id'),
+            body={'type': 'anyone', 'role': 'viewer'}
+        ).execute()
+
+        logging.info(f"Archivo subido correctamente: {filename} ({mimetype})")
         return file.get('webViewLink')
 
     except Exception as e:

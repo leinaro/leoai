@@ -33,7 +33,7 @@ def initialize_gemini():
 
 # --- Main Service Logic ---
 
-def process_with_gemini(client, text: str, image_bytes: Optional[bytes] = None) -> Optional[str]:
+def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, mimetype: Optional[str] = None) -> Optional[str]:
     """Processes the given text and/or image using the Gemini model."""
     if not client:
         logging.error("Cannot process content because the Gemini client is not available.")
@@ -56,23 +56,29 @@ def process_with_gemini(client, text: str, image_bytes: Optional[bytes] = None) 
             "- If any field is missing from the message, infer it when possible or use null. "
         )
 
-        contents = []
-        if image_bytes:
-            image_part = {"mime_type": "image/jpeg", "data": image_bytes}
-            contents.append(image_part)
-        
-        contents.append(text if text else "Extract the financial data from the image.")
+        parts = []
 
-        logging.info(f"Sending prompt to Gemini with text: '{text}' and an image: {'Yes' if image_bytes else 'No'}")
+        if file_bytes and mimetype:
+            parts.append(
+                types.Part.from_bytes(
+                    data=file_bytes,
+                    mime_type=mimetype
+                )
+            )
+
+        #prompt_text = f"Extract the financial data from this document/image/text and merge with information from {text}"
+        parts.append(types.Part.from_text(text=text if text else "Analiza este documento."))
+        
+        logging.info(f"Sending prompt to Gemini with text: '{text}' and an image: {'Yes' if file_bytes else 'No'}")
         
         # Use a multimodal model
         response = client.models.generate_content(
             model="gemini-3-flash-preview",
-            contents=text,
-            #generation_config=types.GenerationConfig(
-            #    response_mime_type="application/json"
-            #)
-            config=types.GenerateContentConfig( # Ahora 'types' ya está definido
+            #contents=text,
+            #contents=contents, # <--- IMPORTANTE: Aquí pasamos la lista completa
+            contents=[types.Content(role="user", parts=parts)], # <--- Formato robusto
+
+            config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json"
             ),
