@@ -100,6 +100,8 @@ def handle_ai_response(
         return
 
     try:
+        logging.info(f"✅ AI response: {ai_response}")
+
         expense_data = json.loads(ai_response)
     
         date_for_drive = expense_data.get('date') or timestamp
