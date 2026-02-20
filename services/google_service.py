@@ -4,27 +4,54 @@ import os
 import logging
 import gspread
 import io
+import json
 import datetime
+from typing import Optional, Tuple
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
+from .secrets import get_secret # Import our secret helper
+
+# --- Helper for Authentication ---
+
+def _get_google_creds() -> Optional[Tuple[Credentials, str, str]]:
+    """Retrieves Google credentials and configuration from Secret Manager."""
+        
+    try:
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets", 
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds, project_id = default(scopes=scopes)
+        
+        sheet_id = get_secret("GOOGLE_SHEET_ID")
+        drive_folder_id = get_secret("GOOGLE_DRIVE_FOLDER_ID")
+
+        if not all([sheet_id, drive_folder_id]):
+            logging.error("One or more Google secrets are missing from Secret Manager.")
+            return None, None, None
+
+        return creds, sheet_id, drive_folder_id
+    
+    except (json.JSONDecodeError, TypeError) as e:
+        logging.error(f"Failed to parse Google credentials JSON: {e}")
+        return None, None, None
+
 # --- Google Sheets Service ---
+
 def add_row_to_sheet(data_row: list):
     """Appends a new row to the configured Google Sheet."""
-    sheet_id = os.getenv("GOOGLE_SHEET_ID")
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    
-    if not sheet_id or not creds_path:
+    creds, sheet_id, _ = _get_google_creds()
+    if not creds:
         logging.error("Google Sheet ID or Credentials Path not found in environment variables.")
         return
 
     try:
         scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        creds, project_id = default(scopes=scopes)
         gs_client = gspread.authorize(creds)
-        
         sheet = gs_client.open_by_key(sheet_id).sheet1
         sheet.append_row(data_row)
         logging.info(f"Successfully added row to Google Sheet: {data_row}")
@@ -39,14 +66,14 @@ def save_file(file_bytes: bytes, date: str, file_name: str, mimetype: str):
     """Saves image bytes to a specified local folder."""
     try:
         
-        folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+        folder_id = get_secret("GOOGLE_DRIVE_FOLDER_ID")
         target_folder_id = get_folder_id_by_date(folder_id, date)
         #subfolder_id = get_or_create_subfolder(folder_name, folder_id)
         #link_drive = upload_image_to_drive(image_bytes, file_name, target_folder_id)
         link_drive = upload_file_to_drive(file_bytes, file_name, target_folder_id, mimetype)
         return link_drive
     except Exception as e:
-        logging.error(f"Error saving image: {e}")
+        logging.error(f"Error saving file to Drive: {e}")
         return None
 
 
@@ -69,11 +96,11 @@ def get_folder_id_by_date(root_id, full_date):
 
 def get_or_create_subfolder(folder_name: str, parent_id: str):
     """Busca una subcarpeta por nombre dentro de una carpeta padre. Si no existe, la crea."""
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     try:
         scopes = ["https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        creds, project_id = default(scopes=scopes)
+
         service = build('drive', 'v3', credentials=creds)
 
         query = (f"name = '{folder_name}' and "
@@ -103,11 +130,10 @@ def get_or_create_subfolder(folder_name: str, parent_id: str):
         return parent_id
 
 def upload_image_to_drive(image_bytes: bytes, filename: str, folder_id: str):
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     try:
         scopes = ["https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        creds, project_id = default(scopes=scopes)
         service = build('drive', 'v3', credentials=creds)
 
         file_metadata = {
@@ -145,11 +171,10 @@ def upload_file_to_drive(file_bytes: bytes, filename: str, folder_id: str, mimet
     """
     Sube cualquier tipo de archivo (imagen, PDF, etc.) a Drive.
     """
-    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    
+
     try:
         scopes = ["https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        creds, project_id = default(scopes=scopes)
         service = build('drive', 'v3', credentials=creds)
 
         file_metadata = {

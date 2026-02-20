@@ -1,19 +1,20 @@
 """Handles all interactions with the WhatsApp Business API."""
 
-import os
 import logging
 import requests
 from typing import Optional
+
+from .secrets import get_secret
 
 # --- WhatsApp Business API Functions ---
 
 def send_whatsapp_message(to: str, message: str):
     """Sends a WhatsApp message using the Meta Graph API."""
-    access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
-    phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    access_token = get_secret("WHATSAPP_ACCESS_TOKEN")
+    phone_number_id = get_secret("WHATSAPP_PHONE_NUMBER_ID")
     
     if not all([access_token, phone_number_id]):
-        logging.error("WhatsApp API credentials not found in environment variables.")
+        logging.error("WhatsApp API credentials could not be retrieved from Secret Manager.")
         return
 
     url = f"https://graph.facebook.com/v19.0/{phone_number_id}/messages"
@@ -36,9 +37,9 @@ def send_whatsapp_message(to: str, message: str):
 
 def get_media_url(media_id: str) -> Optional[str]:
     """Sirve para cualquier archivo: imagen, PDF, video, etc."""
-    access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
+    access_token = get_secret("WHATSAPP_ACCESS_TOKEN")
     if not access_token:
-        logging.error("WHATSAPP_ACCESS_TOKEN not found.")
+        logging.error("WHATSAPP_ACCESS_TOKEN could not be retrieved from Secret Manager.")
         return None
     
     # El endpoint es el mismo para todos los tipos de media
@@ -50,12 +51,16 @@ def get_media_url(media_id: str) -> Optional[str]:
         response.raise_for_status()
         return response.json().get("url")
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error obteniendo URL de media ({media_id}): {e}")
+        logging.error(f"Error getting media URL ({media_id}): {e}")
         return None
 
 def download_media_content(media_url: str) -> Optional[bytes]:
-    """Descarga los bytes del archivo, sea cual sea su formato."""
-    access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
+    """Downloads the raw bytes of a media file from the given URL."""
+    access_token = get_secret("WHATSAPP_ACCESS_TOKEN")
+    if not access_token:
+        logging.error("WHATSAPP_ACCESS_TOKEN could not be retrieved for media download.")
+        return None
+        
     headers = {"Authorization": f"Bearer {access_token}"}
     
     try:
@@ -64,5 +69,5 @@ def download_media_content(media_url: str) -> Optional[bytes]:
         response.raise_for_status()
         return response.content
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error descargando contenido de media: {e}")
+        logging.error(f"Error downloading media content: {e}")
         return None

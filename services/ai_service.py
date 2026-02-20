@@ -1,11 +1,12 @@
 """Handles all interactions with the Gemini AI model."""
 
-import os
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from google import genai
 from google.genai import types
+
+from .secrets import get_secret # Import our secret helper
 
 # --- Gemini AI Model Initialization ---
 
@@ -15,10 +16,10 @@ def initialize_gemini():
     Returns:
         A configured Client instance or None if initialization fails.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    
+    api_key = get_secret("GEMINI_API_KEY")
+
     if not api_key:
-        logging.error("GEMINI_API_KEY not found in environment variables. The model cannot be initialized.")
+        logging.error("GEMINI_API_KEY could not be retrieved from Secret Manager.")
         return None
 
     logging.info("GEMINI_API_KEY found. Configuring Gemini...")
@@ -30,8 +31,6 @@ def initialize_gemini():
     except Exception as e:
         logging.error(f"An error occurred during Gemini client initialization: {e}")
         return None
-
-# --- Main Service Logic ---
 
 def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, mimetype: Optional[str] = None) -> Optional[str]:
     """Processes the given text and/or image using the Gemini model."""
