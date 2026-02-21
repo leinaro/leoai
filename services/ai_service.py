@@ -73,15 +73,18 @@ def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, m
         # Use a multimodal model
         response = client.models.generate_content(
             model="gemini-3-flash-preview",
-            #contents=text,
+            contents=text,
+            # todavia no funcionan las imagenes
             #contents=contents, # <--- IMPORTANTE: Aquí pasamos la lista completa
-            contents=[types.Content(role="user", parts=parts)], # <--- Formato robusto
+            #contents=[types.Content(role="user", parts=parts)], # <--- Formato robusto
 
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json"
             ),
         )
+        logging.info(f"gemini response {response}")
+
         return response.text
     except Exception as e:
         logging.error(f"An error occurred while communicating with Gemini: {e}")

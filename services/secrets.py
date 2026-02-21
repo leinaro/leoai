@@ -31,7 +31,7 @@ def get_secret(secret_id: str, project_id: Optional[str] = None) -> Optional[str
         The secret value as a string, or None if it cannot be retrieved.
     """
             
-    logging.error("***********get secret "+secret_id)
+    logging.info("get secret with id "+secret_id)
 
     if not CLIENT_AVAILABLE:
         logging.warning("Secret Manager client is not available. Cannot fetch secret.")

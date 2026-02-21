@@ -45,16 +45,21 @@ def _get_google_creds() -> Optional[Tuple[Credentials, str, str]]:
 
 def add_row_to_sheet(data_row: list):
     """Appends a new row to the configured Google Sheet."""
-    creds, sheet_id, _ = _get_google_creds()
-    if not creds:
-        logging.error("Google Sheet ID or Credentials Path not found in environment variables.")
-        return
+    logging.info(f"Apppending row to Google Sheet. {data_row}")
 
     try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds, project_id = default(scopes=scopes)
+        creds, sheet_id, _ = _get_google_creds()
+        if not creds:
+            logging.error("Google Sheet ID or Credentials Path not found in environment variables.")
+            return
+        
+        logging.info("gspread.authorize")
         gs_client = gspread.authorize(creds)
+
+        logging.info("open_by_key")
         sheet = gs_client.open_by_key(sheet_id).sheet1
+
+        logging.info("append_row")
         sheet.append_row(data_row)
         logging.info(f"Successfully added row to Google Sheet: {data_row}")
     except FileNotFoundError:

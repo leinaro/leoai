@@ -26,11 +26,14 @@ def handle_whatsapp_message(data: dict):
         ai_response = None
 
         if message_type == 'text':
+            logging.info("text message received")
             message_text = message_data['text']['body']
             logging.info(f"Received text message: '{message_text}' from {sender_phone}")
             ai_response = ai_service.process_with_gemini(client, message_text)
 
         elif message_type in ['image', 'document']:
+            logging.info("image message received")
+
             # Extraemos la info dinámicamente según sea imagen o documento
             media_info = message_data[message_type] 
             media_id = media_info['id']
@@ -100,9 +103,11 @@ def handle_ai_response(
         return
 
     try:
-        logging.info(f"✅ AI response: {ai_response}")
+        logging.info(f"AI response: {ai_response}")
 
         expense_data = json.loads(ai_response)
+
+        logging.info("expense_data")
     
         date_for_drive = expense_data.get('date') or timestamp
         folder = expense_data.get('folder', 'Unknown')
@@ -120,6 +125,7 @@ def handle_ai_response(
 
         # Prepare the row for Google Sheets
         # Date	Concept	Amount	Currency	Category	Subcategory	Sender	Timestamp
+        
         row_to_add = [
             date_for_drive,         # C: Fecha de la factura (extraída por IA)
             concept,                # D: Concepto
@@ -131,6 +137,8 @@ def handle_ai_response(
             timestamp,              # A: Cuándo se envió el mensaje
             link_drive              # I: Link directo al archivo
         ]
+        logging.info(f"row_to_add {row_to_add}")
+
         
         google_service.add_row_to_sheet(row_to_add)
         
