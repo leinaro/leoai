@@ -73,7 +73,7 @@ def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, m
         # Use a multimodal model
         response = client.models.generate_content(
             #model="gemini-3-flash-preview",
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             contents=text,
             # todavia no funcionan las imagenes
             #contents=contents, # <--- IMPORTANTE: Aquí pasamos la lista completa
