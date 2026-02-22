@@ -216,3 +216,29 @@ def upload_file_to_drive(file_bytes: bytes, filename: str, folder_id: str, mimet
     except Exception as e:
         logging.error(f"Error subiendo a Google Drive: {e}")
         return None
+
+    
+def get_authorized_users():
+    """Lee los números permitidos de la pestaña 'Usuarios'."""
+    try:
+        sheet_id = get_secret("GOOGLE_SHEET_ID")
+
+        # Rango: Pestaña 'Usuarios', columna A (saltando el encabezado)
+        range_name = "Usuarios!A2:A"
+        
+        # Usamos el mismo objeto 'service' de Sheets que ya tienes
+        result = sheet_service.spreadsheets().values().get(
+            spreadsheetId=sheet_id, 
+            range=range_name
+        ).execute()
+        
+        values = result.get('values', [])
+        
+        # Convertimos la lista de listas en una lista simple de strings
+        # [['34123'], ['34567']] -> ['34123', '34567']
+        authorized_numbers = [str(row[0]).strip() for row in values if row]
+        return authorized_numbers
+        
+    except Exception as e:
+        print(f"Error leyendo usuarios permitidos: {e}")
+        return []

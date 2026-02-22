@@ -18,6 +18,14 @@ def handle_whatsapp_message(data: dict):
     try:
         message_data = data['entry'][0]['changes'][0]['value']['messages'][0]
         sender_phone = message_data['from']
+        
+        allowed_users = google_service.get_authorized_users()
+        if sensender_phoneder not in allowed_users:
+            logging.warning(f"Usuario {sender_phone} bloqueado. No está en la lista de Sheets.")
+            return # Meta recibe el OK, pero no hacemos nada
+
+        whatsapp_service.send_whatsapp_message(sender_number, "✅ Mensaje recibido. Procesando tus gastos...")
+
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         message_type = message_data.get('type')
 
@@ -52,6 +60,7 @@ def handle_whatsapp_message(data: dict):
     except (KeyError, IndexError) as e:
         logging.error(f"Could not parse WhatsApp webhook payload: {e}")
         logging.error(f"Received data: {data}")
+        whatsapp_service.send_whatsapp_message(sender_number, "❌ Hubo un error al intentar guardar los datos. Revisa el formato.")
 
 def process_media_message(
     sender_phone: str, 
@@ -99,7 +108,7 @@ def handle_ai_response(
     """Handles the response from the AI service, saving data and images."""
     if not ai_response:
         logging.warning("AI response was empty. Cannot process further.")
-        # Optionally, send a failure message via WhatsApp
+        whatsapp_service.send_whatsapp_message(sender_number, "❌ Hubo un error al intentar guardar los datos. Revisa el formato.")
         return
 
     try:
@@ -145,8 +154,11 @@ def handle_ai_response(
         # Optionally, send a success message via WhatsApp
         # whatsapp_service.send_whatsapp_message(to=sender_phone, message="Data processed successfully.")
         logging.info(f"✅ Transacción registrada: {concept} - {folder}")
+        send_whatsapp_message(sender_number, "📝 ¡Listo! Datos agregados correctamente a tu Google Sheet.")
 
     except json.JSONDecodeError:
         logging.error(f"Could not parse AI response as JSON: {ai_response}")
+        whatsapp_service.send_whatsapp_message(sender_number, "❌ Hubo un error al intentar guardar los datos. Revisa el formato.")
     except Exception as e:
         logging.error(f"An error occurred during data preparation: {e}")
+        whatsapp_service.send_whatsapp_message(sender_number, "❌ Hubo un error al intentar guardar los datos. Revisa el formato.")
