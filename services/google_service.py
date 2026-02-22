@@ -66,6 +66,7 @@ def add_row_to_sheet(data_row: list):
         logging.error(f"Credentials file not found at path: {creds_path}. Make sure the file exists.")
     except Exception as e:
         logging.error(f"An error occurred while writing to Google Sheets: {e}")
+        logging.error("An error occurred while writing to Google Sheets:", exc_info=True)
 
 # --- Google Drive Service ---
 
