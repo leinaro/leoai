@@ -221,36 +221,33 @@ def upload_file_to_drive(file_bytes: bytes, filename: str, folder_id: str, mimet
 def get_authorized_users():
     """Lee los números permitidos de la pestaña 'Usuarios'."""
     try:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-        # 1. Obtenemos el ID del Sheet
-        sheet_id = get_secret("GOOGLE_SHEET_ID")
+        creds, sheet_id, _ = _get_google_creds()
+        if not creds:
+            logging.error("Google Sheet ID or Credentials Path not found in environment variables.")
+            return
         
-        # --- SOLUCIÓN AL ERROR ---
-        # Asegúrate de inicializar 'sheet_service' aquí si no es global.
-        # Si ya tienes una función que lo crea, llámala:
-        # sheet_service = get_google_sheets_service() 
-        # --------------------------
+        logging.info("gspread.authorize")
+        gs_client = gspread.authorize(creds)
 
+        logging.info("open_by_key")
+        spreadsheet = gs_client.open_by_key(sheet_id)
+        
         logging.info(f"Intentando leer hoja: {sheet_id} en el rango 'Usuarios!A2:A'")
 
-        range_name = "Usuarios!A2:A"
-        
-        result = sheet_service.spreadsheets().values().get(
-            spreadsheetId=sheet_id, 
-            range=range_name
-        ).execute()
-        
-        values = result.get('values', [])
-        
-        if not values:
+        logging.info("worksheet Usuarios")
+        sheet = spreadsheet.worksheet("Usuarios")
+
+        logging.info("get range A2:A")
+        values = sheet.get("A2:A")
+
+        # Flatten lista de listas
+        authorized_numbers = [row[0] for row in values if row]
+
+        if not authorized_numbers:
             logging.warning("No se encontraron datos en el rango especificado.")
             return []
 
-        # Limpiamos los datos: quitamos espacios y caracteres extraños
-        authorized_numbers = [str(row[0]).strip() for row in values if row]
-        
-        logging.info(f"Se cargaron {len(authorized_numbers)} usuarios exitosamente.")
+        logging.info(f"Successfully read {len(authorized_numbers)} users from column A")
         return authorized_numbers
         
     except NameError as ne:
