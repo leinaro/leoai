@@ -49,13 +49,12 @@ def handle_whatsapp_message(data: dict):
             caption = media_info.get('caption', '')
             logging.info(f"Received {message_type} ({mimetype}) with caption: '{caption}' from {sender_phone}")
 
-            ai_response, file_bytes = process_media_message(sender_phone, media_id, caption, timestamp, message_type)
+            ai_response, file_bytes = process_media_message(sender_phone, media_id, caption, timestamp, message_type, historial)
         
         else:
             logging.warning(f"Unsupported message type: {message_type}")
 
         handle_ai_response(timestamp, sender_phone, ai_response, file_bytes, mimetype)
-
 
     except (KeyError, IndexError) as e:
         logging.error(f"Could not parse WhatsApp webhook payload: {e}")
@@ -117,12 +116,27 @@ def handle_ai_response(
         expense_data = json.loads(ai_response)
 
         logging.info("expense_data")
+
+        valid_expense = expense_data.get('valid_expense') or False
+        if not valid_expense:
+            logging.warning("Invalid expense. Not saving to Google Sheets.")
+            error_message = expense_data.get('message') or "❌ Hubo un error al intentar guardar los datos. Revisa el formato."
+
+            whatsapp_service.send_whatsapp_message(sender_number, error_message)
+
     
+        if "{" in ai_response and "}" in ai_response:
+            handle_ai_response(timestamp, sender_phone, ai_response, file_bytes, mimetype)
+        else:
+            send_whatsapp_message(sender_phone, ai_response)
+
+
         date_for_drive = expense_data.get('date') or timestamp
         folder = expense_data.get('folder', 'Unknown')
         concept = expense_data.get('concept', '')
     
         link_drive = ""
+
             
         if file_bytes and mimetype:
             ext = ".pdf" if "pdf" in mimetype else ".jpg"
