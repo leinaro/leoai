@@ -221,12 +221,21 @@ def upload_file_to_drive(file_bytes: bytes, filename: str, folder_id: str, mimet
 def get_authorized_users():
     """Lee los números permitidos de la pestaña 'Usuarios'."""
     try:
-        sheet_id = get_secret("GOOGLE_SHEET_ID")
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-        # Rango: Pestaña 'Usuarios', columna A (saltando el encabezado)
+        # 1. Obtenemos el ID del Sheet
+        sheet_id = get_secret("GOOGLE_SHEET_ID")
+        
+        # --- SOLUCIÓN AL ERROR ---
+        # Asegúrate de inicializar 'sheet_service' aquí si no es global.
+        # Si ya tienes una función que lo crea, llámala:
+        # sheet_service = get_google_sheets_service() 
+        # --------------------------
+
+        logging.info(f"Intentando leer hoja: {sheet_id} en el rango 'Usuarios!A2:A'")
+
         range_name = "Usuarios!A2:A"
         
-        # Usamos el mismo objeto 'service' de Sheets que ya tienes
         result = sheet_service.spreadsheets().values().get(
             spreadsheetId=sheet_id, 
             range=range_name
@@ -234,11 +243,20 @@ def get_authorized_users():
         
         values = result.get('values', [])
         
-        # Convertimos la lista de listas en una lista simple de strings
-        # [['34123'], ['34567']] -> ['34123', '34567']
+        if not values:
+            logging.warning("No se encontraron datos en el rango especificado.")
+            return []
+
+        # Limpiamos los datos: quitamos espacios y caracteres extraños
         authorized_numbers = [str(row[0]).strip() for row in values if row]
+        
+        logging.info(f"Se cargaron {len(authorized_numbers)} usuarios exitosamente.")
         return authorized_numbers
         
+    except NameError as ne:
+        logging.error(f"Error de variable no definida: {ne}")
+        return []
     except Exception as e:
-        print(f"Error leyendo usuarios permitidos: {e}")
+        # El log detallado nos dirá si es un error de permisos, de red o de ID
+        logging.error(f"Error crítico leyendo usuarios: {e}", exc_info=True)
         return []
