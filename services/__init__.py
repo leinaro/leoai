@@ -26,7 +26,7 @@ def handle_whatsapp_message(data: dict):
 
             return # Meta recibe el OK, pero no hacemos nada
 
-        whatsapp_service.send_whatsapp_message(sender_phone, "✅ Mensaje recibido. Procesando tus gastos...")
+        #whatsapp_service.send_whatsapp_message(sender_phone, "✅ Mensaje recibido. Procesando tus gastos...")
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         message_type = message_data.get('type')
@@ -116,12 +116,6 @@ def handle_ai_response(
         logging.info(f"AI response: {ai_response}")
         print(f"AI response: {ai_response}")
 
-        #if "{" in ai_response and "}" in ai_response:
-        #    logging.warning("Invalid expense. Not saving to Google Sheets.")
-        #    handle_ai_response(timestamp, sender_phone, ai_response, file_bytes, mimetype)
-        #else:
-        #    send_whatsapp_message(sender_phone, ai_response)
-
         expense_data = json.loads(ai_response)
 
         logging.info("expense_data")
@@ -157,7 +151,7 @@ def handle_ai_response(
             expense_data.get('amount', ''),
             expense_data.get('currency', ''),
             expense_data.get('category', ''),
-            folder,                 # H: Ubicación/Folder
+            expense_data.get('subcategory', ''),
             sender_phone,           # B: Quién lo envió
             timestamp,              # A: Cuándo se envió el mensaje
             link_drive              # I: Link directo al archivo
@@ -171,6 +165,14 @@ def handle_ai_response(
         # whatsapp_service.send_whatsapp_message(to=sender_phone, message="Data processed successfully.")
         logging.info(f"✅ Transacción registrada: {concept} - {folder}")
         print(f"✅ Transacción registrada: {concept} - {folder}")
+
+        mensaje = (
+                f"Se creó exitosamente una entrada con concepto '{concept}', "
+                f"valor {expense_data.get('amount', '')} {expense_data.get('currency', '')}, "
+                f"categoría '{expense_data.get('category', '')}', "
+                f"subcategoría '{expense_data.get('subcategory', '')}'. "
+                )
+
         whatsapp_service.send_whatsapp_message(sender_phone, "📝 ¡Listo! Datos agregados correctamente a tu Google Sheet.")
 
     except json.JSONDecodeError:
