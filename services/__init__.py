@@ -16,7 +16,7 @@ from utils.errors import AIProccesingException
 def handle_whatsapp_message(data: dict):
     """Main handler for incoming WhatsApp messages."""
     try:
-        entry = request_data.get('entry', [{}])[0]
+        entry = data.get('entry', [{}])[0]
         changes = entry.get('changes', [{}])[0]
         value = changes.get('value', {})
 
