@@ -16,7 +16,19 @@ from utils.errors import AIProccesingException
 def handle_whatsapp_message(data: dict):
     """Main handler for incoming WhatsApp messages."""
     try:
-        message_data = data['entry'][0]['changes'][0]['value']['messages'][0]
+        entry = request_data.get('entry', [{}])[0]
+        changes = entry.get('changes', [{}])[0]
+        value = changes.get('value', {})
+
+        # 2. IMPORTANTE: Verificar si es un mensaje o un cambio de estado
+        if 'statuses' in value:
+            logging.info("Es una actualización de estado (sent/delivered/read). Ignorando.")
+            return
+
+        if 'messages' in value:
+            message = value['messages'][0]
+
+        message_data = value['messages'][0]
         sender_phone = message_data['from']
         
         logging.debug(f"Validando usuario {sender_phone}" )
@@ -47,10 +59,13 @@ def handle_whatsapp_message(data: dict):
     except (KeyError, IndexError) as e:
         logging.error(f"Could not parse WhatsApp webhook payload: {e}")
         logging.error(f"Received data: {data}")
+
+        """{'object': 'whatsapp_business_account', 'entry': [{'id': '4223017651301496', 'changes': [{'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '34624965144', 'phone_number_id': '940327099169335'}, 'statuses': [{'id': 'wamid.HBgLMzQ2MjQ3NjIyNDUVAgARGBJEQjI2MjdEQzE4Q0NGRTg5OEQA', 'status': 'sent', 'timestamp': '1772577070', 'recipient_id': '34624762245', 'pricing': {'billable': False, 'pricing_model': 'PMP', 'category': 'service', 'type': 'free_customer_service'}}]}, 'field': 'messages'}]}]}"""
+
         whatsapp_service.send_whatsapp_message(sender_phone, "❌ Could not parse WhatsApp webhook payload.")
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
-        whatsapp_service.send_whatsapp_message(sender_phone, "❌ Lo siento, al raro paso.")
+        whatsapp_service.send_whatsapp_message(sender_phone, "❌ Lo siento, algo raro paso.")
 
 def handle_ai_response(
     timestamp: str, 
