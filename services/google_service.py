@@ -14,10 +14,9 @@ from googleapiclient.http import MediaIoBaseUpload
 
 from google.auth import default
 
-from .secrets import get_secret # Import our secret helper
+from .secrets import get_secret
 
 # --- Helper for Authentication ---
-
 def _get_google_creds() -> Optional[Tuple[Credentials, str, str]]:
     """Retrieves Google credentials and configuration from Secret Manager."""
         

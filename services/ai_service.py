@@ -10,6 +10,14 @@ from .secrets import get_secret # Import our secret helper
 
 # --- Gemini AI Model Initialization ---
 
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = initialize_gemini()
+    return _client
+
 def initialize_gemini():
     """Initializes and returns the Gemini client.
     
@@ -32,8 +40,10 @@ def initialize_gemini():
         logging.error(f"An error occurred during Gemini client initialization: {e}")
         return None
 
-def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, mimetype: Optional[str] = None) -> Optional[str]:
+def process_with_gemini(text: str, file_bytes: Optional[bytes] = None, mimetype: Optional[str] = None) -> Optional[str]:
     """Processes the given text and/or image using the Gemini model."""
+    client = _get_client()
+
     if not client:
         logging.error("Cannot process content because the Gemini client is not available.")
         return None
@@ -49,7 +59,6 @@ def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, m
             "Date field rule: "
             "The date field must be formatted as YYYY-MM-DD (e.g., 2026-03-01)."
             "If the entry refers to an expense for a specific month (e.g., March), use the first day of that month (e.g., 2026-03-01)."
-            "If no date is provided, use the current date."
             "Currency field rule: "
             "The currency field must use the ISO 4217 three-letter currency code format (e.g., EUR, COP)."
             "Category rules:"
@@ -68,7 +77,6 @@ def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, m
             "Familia: Includes Madre"
             "Ahorro: Includes Jubilación, fondos de reserva."
             "Otros: Use only for others"
-
             "Validation rules: "
             "- If the message/image is NOT a valid financial expense or lacks essential data (concept/amount), set 'valid_expense' to false and 'message' to an explanation of what is missing. Set all other fields to null. "
             "- If it is a valid expense, set 'valid_expense' to true and 'message' to 'Success'. "
@@ -87,21 +95,21 @@ def process_with_gemini(client, text: str, file_bytes: Optional[bytes] = None, m
                     mime_type=mimetype
                 )
             )
-
+        
+        prompt_text = text if text else "Analiza este documento y extrae la información financiera."
+        parts.append(types.Part.from_text(text=prompt_text))
         #prompt_text = f"Extract the financial data from this document/image/text and merge with information from {text}"
-        parts.append(types.Part.from_text(text=text if text else "Analiza este documento."))
+        #parts.append(types.Part.from_text(text=text if text else "Analiza este documento."))
         
         logging.info(f"Sending prompt to Gemini with text: '{text}' and an image: {'Yes' if file_bytes else 'No'}")
         
         # Use a multimodal model
         response = client.models.generate_content(
-            #model="gemini-3-flash-preview",
             model="gemini-2.5-flash",
-            contents=text,
-            # todavia no funcionan las imagenes
-            #contents=contents, # <--- IMPORTANTE: Aquí pasamos la lista completa
-            #contents=[types.Content(role="user", parts=parts)], # <--- Formato robusto
-
+            #contents=text, #esta funciona
+            contents=[
+                types.Content(role="user", parts=parts)
+            ],
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json"
